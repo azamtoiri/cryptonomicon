@@ -197,6 +197,27 @@
 <script>
 export default {
   name: "App",
+  created() {
+    const windowData = Object.fromEntries(
+      new URL(window.location).searchParams.entries()
+    );
+    if (windowData.filter) {
+      this.filter = windowData.filter;
+    }
+    if (windowData.page) {
+      this.page = windowData.page;
+    }
+    const tickersData = localStorage.getItem("cryptonomicon-list");
+
+    if (tickersData) {
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach((ticker) => {
+        this.subscribeToUpdates(ticker.name);
+      });
+    }
+    this.downloadAllCrypts();
+  },
+
   data() {
     return {
       ticker: "", // one ticker
@@ -217,27 +238,6 @@ export default {
       page: 1,
       hasNextPage: false,
     };
-  },
-
-  created() {
-    const windowData = Object.fromEntries(
-      new URL(window.location).searchParams.entries()
-    );
-    if (windowData.filter) {
-      this.filter = windowData.filter;
-    }
-    if (windowData.page) {
-      this.page = windowData.page;
-    }
-    const tickersData = localStorage.getItem("cryptonomicon-list");
-
-    if (tickersData) {
-      this.tickers = JSON.parse(tickersData);
-      this.tickers.forEach((ticker) => {
-        this.subscribeToUpdates(ticker.name);
-      });
-    }
-    this.downloadAllCrypts();
   },
 
   methods: {
