@@ -102,11 +102,11 @@
         </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="t in filteredTickers()"
+            v-for="t in paginatedTickers"
             :key="t.name"
             @click="select(t)"
             :class="{
-              'border-4': sel === t,
+              'border-4': selectedTicker === t,
             }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
@@ -151,20 +151,20 @@
           </div>
         </div>
       </template>
-      <section v-if="sel" class="relative">
+      <section v-if="selectedTicker" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ sel.name }} - USD
+          {{ selectedTicker.name }} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            v-for="(bar, idx) in normalizeGraph()"
+            v-for="(bar, idx) in normalizedGraph"
             :key="idx"
             :style="{ height: `${bar}%` }"
             class="bg-purple-800 border w-10"
           ></div>
         </div>
         <button
-          @click="sel = null"
+          @click="selectedTicker = null"
           type="button"
           class="absolute top-0 right-0"
         >
@@ -195,18 +195,79 @@
 </template>
 
 <script>
+// [x] 6. Наличие в состоянии ЗАВИСИМЫХ ДАННЫХ | Критичность: 5+
+// [ ] 4. Запросы напрямую внутри компонента (???) | Критичность: 5
+// [ ] 2. При удалении остается подписка на загрузку тикера | Критичность: 5
+// [ ] 5. Обработка ошибок API | Критичность: 5
+// [ ] 3. Количество запросов | Критичность: 4
+// [x] 8. При удалении тикера не изменяется localStorage | Критичность: 4
+// [x] 1. Одинаковый код в watch | Критичность: 3
+// [ ] 9. localStorage и анонимные вкладки | Критичность: 3
+// [ ] 7. График ужасно выглядит если будет много цен | Критичность: 2
+// [ ] 10. Магические строки и числа (URL, 5000 миллисекунд задержки, ключ локал стораджа, количество на странице) |  Критичность: 1
+
+// Параллельно
+// [x] График сломан если везде одинаковые значения
+// [x] При удалении тикера остается выбор
+
 export default {
   name: "App",
+  computed: {
+    startIndex() {
+      return (this.page - 1) * 6;
+    },
+
+    endIndex() {
+      return this.page * 6;
+    },
+
+    hasNextPage() {
+      return this.filteredTickers.length > this.endIndex;
+    },
+
+    filteredTickers() {
+      return this.tickers.filter((ticker) => ticker.name.includes(this.filter));
+    },
+
+    paginatedTickers() {
+      return this.filteredTickers.slice(this.startIndex, this.endIndex);
+    },
+
+    normalizedGraph() {
+      // нормализация графика
+      const maxvalue = Math.max(...this.graph);
+      const minvalue = Math.min(...this.graph);
+      if (maxvalue === minvalue) {
+        return this.graph.map(() => 50);
+      }
+      return this.graph.map(
+        (price) => 4 + ((price - minvalue) * 95) / (maxvalue - minvalue)
+      );
+    },
+
+    paginateOptions() {
+      return {
+        filter: this.filter,
+        page: this.page,
+      };
+    },
+  },
   created() {
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
     );
-    if (windowData.filter) {
-      this.filter = windowData.filter;
-    }
-    if (windowData.page) {
-      this.page = windowData.page;
-    }
+    const VALID_KEYS = ["filter", "page"];
+    VALID_KEYS.forEach((key) => {
+      if (windowData[key]) {
+        this[key] = windowData[key];
+      }
+    });
+    // if (windowData.filter) {
+    //   this.filter = windowData.filter;
+    // }
+    // if (windowData.page) {
+    //   this.page = windowData.page;
+    // }
     const tickersData = localStorage.getItem("cryptonomicon-list");
 
     if (tickersData) {
@@ -221,22 +282,27 @@ export default {
   data() {
     return {
       ticker: "", // one ticker
+      filter: "", // filter
+
       tickers: [], // all tickers
+      selectedTicker: null, // show graph
+
+      graph: [],
+
+      page: 1,
+
+      downloaded: false, // загружены ключевые слова
+
+      showError: false, // вывести ошибку?
+      currentError: "", // текущая ошибка которая есть
       errors: {
         notFound: "Такая криптовалюта не найдена",
         alreadyAdded: "Такой тикер уже добавлен",
         empty: "Напишите имя криптовалюты",
       }, // all errors
-      currentError: "", // текущая ошибка которая есть
-      filter: "", // filter
-      quickCrypts: ["BTC", "DOGE", "BCH", "TON"], // show quick crypts
+
       allCrypts: [], // crypts
-      showError: false, // вывести ошибку?
-      downloaded: false, // загружены ключевые слова
-      sel: null, // show graph
-      graph: [],
-      page: 1,
-      hasNextPage: false,
+      quickCrypts: ["BTC", "DOGE", "BCH", "TON"], // show quick crypts
     };
   },
 
@@ -254,20 +320,6 @@ export default {
       }
     },
 
-    filteredTickers() {
-      const start = (this.page - 1) * 6;
-      const end = this.page * 6;
-      if (this.filter === "") {
-        this.hasNextPage = this.tickers.length > end;
-        return this.tickers.slice(start, end);
-      }
-      const filteredTickers = this.tickers.filter((ticker) =>
-        ticker.name.toLowerCase().includes(this.filter.toLowerCase())
-      );
-      this.hasNextPage = filteredTickers.length > end;
-      return filteredTickers.slice(start, end);
-    },
-
     subscribeToUpdates(tickerName) {
       // подписаться на обновления
       setInterval(async () => {
@@ -275,16 +327,16 @@ export default {
           `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=94f904f97f51d9d7bb2ac8f15b206f78fb86903a3717b21ee970007b52241cd1`
         );
         const data = await f.json();
-        const foundTicker = this.tickers.find(
-          (ticker) => ticker.name === tickerName
-        );
-        if (!foundTicker) {
-          return;
-        }
+        // const foundTicker = this.tickers.find(
+        //   (ticker) => ticker.name === tickerName
+        // );
+        // if (!foundTicker) {
+        //   return;
+        // }
         this.tickers.find((t) => t.name === tickerName).price =
           data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
 
-        if (this.sel?.name === tickerName) {
+        if (this.selectedTicker?.name === tickerName) {
           this.graph.push(data.USD);
         }
       }, 5000);
@@ -334,7 +386,7 @@ export default {
         }
       }
       const currentTicker = { name: this.ticker, price: "-" };
-      this.tickers.push(currentTicker);
+      this.tickers = [...this.tickers, currentTicker];
 
       localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
 
@@ -345,25 +397,12 @@ export default {
     handleDelete(ticker) {
       // удалить ticker
       this.tickers = this.tickers.filter((t) => t !== ticker);
-      this.sel = null;
-
-      localStorage.removeItem("cryptonomicon-list");
-      const tmp = this.tickers.filter((t) => t !== ticker);
-      localStorage.setItem("cryptonomicon-list", JSON.stringify(tmp));
-    },
-
-    normalizeGraph() {
-      // нормализация графика
-      const maxvalue = Math.max(...this.graph);
-      const minvalue = Math.min(...this.graph);
-      return this.graph.map(
-        (price) => 5 + ((price - minvalue) * 95) / (maxvalue - minvalue)
-      );
+      this.selectedTicker = null;
     },
 
     select(ticker) {
       // выбрать текущий
-      this.sel = ticker;
+      this.selectedTicker = ticker;
       this.graph = [];
     },
 
@@ -381,20 +420,29 @@ export default {
     },
   },
   watch: {
+    tickers() {
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
+    },
+
+    selectedTicker() {
+      this.graph = [];
+    },
+
+    paginatedTickers() {
+      if (this.paginatedTickers.length === 0 && this.page > 1) {
+        this.page -= 1;
+      }
+    },
+
     filter() {
       this.page = 1;
-
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      );
     },
-    page() {
+
+    paginateOptions(value) {
       window.history.pushState(
         null,
         document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+        `${window.location.pathname}?filter=${value.filter}&page=${value.page}`
       );
     },
   },
