@@ -327,12 +327,7 @@ export default {
           `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=94f904f97f51d9d7bb2ac8f15b206f78fb86903a3717b21ee970007b52241cd1`
         );
         const data = await f.json();
-        // const foundTicker = this.tickers.find(
-        //   (ticker) => ticker.name === tickerName
-        // );
-        // if (!foundTicker) {
-        //   return;
-        // }
+
         this.tickers.find((t) => t.name === tickerName).price =
           data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
 
@@ -394,16 +389,17 @@ export default {
       this.subscribeToUpdates(currentTicker.name);
     },
 
-    handleDelete(ticker) {
+    handleDelete(tickerToRemove) {
       // удалить ticker
-      this.tickers = this.tickers.filter((t) => t !== ticker);
-      this.selectedTicker = null;
+      this.tickers = this.tickers.filter((t) => t !== tickerToRemove);
+      if (this.selectedTicker === tickerToRemove) {
+        this.selectedTicker = null;
+      }
     },
 
     select(ticker) {
       // выбрать текущий
       this.selectedTicker = ticker;
-      this.graph = [];
     },
 
     async downloadAllCrypts() {
