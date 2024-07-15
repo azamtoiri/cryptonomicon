@@ -34,7 +34,7 @@
           <div class="mt-1 relative rounded-md shadow-md">
             <input
               v-model="ticker"
-              v-on:focus="removeAllErrors"
+              v-on:focus="removeError"
               @keydown.enter="add"
               @input="prediction(ticker)"
               type="text"
@@ -54,15 +54,11 @@
               {{ crypt }}
             </span>
           </div>
-          <div v-if="showAlreadyAddedError" class="text-sm text-red-600">
-            Такой тикер уже добавлен
-          </div>
-          <div v-if="showEmptyError" class="text-sm text-red-600">
-            Напишите имя криптовалюты
-          </div>
-          <div v-if="showNotFound" class="text-sm text-red-600">
-            Такая криптовалюта не найдена
-          </div>
+          <section v-if="showError" class="relative">
+            <div class="text-sm text-red-600">
+              {{ currentError }}
+            </div>
+          </section>
         </div>
       </div>
       <button
@@ -86,11 +82,27 @@
         Добавить
       </button>
       <template v-if="tickers.length">
-        <!--        <div>Фильтр: <input v-model="filter" /></div> добавления фильтра-->
         <hr class="w-full border-t border-gray-600 my-4" />
+        <div>
+          <button
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            v-if="page > 1"
+            @click="page = page - 1"
+          >
+            Назад
+          </button>
+          <button
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            @click="page = page + 1"
+            v-if="hasNextPage"
+          >
+            Вперед
+          </button>
+          <div>Фильтр: <input v-model="filter" /></div>
+        </div>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="t in tickers"
+            v-for="t in filteredTickers()"
             :key="t.name"
             @click="select(t)"
             :class="{
@@ -129,6 +141,15 @@
           </div>
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
+      </template>
+      <template v-else>
+        <div
+          class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid"
+        >
+          <div class="px-4 py-5 sm:p-6 text-center bg-gray-300">
+            Вы еще не добавили крипту
+          </div>
+        </div>
       </template>
       <section v-if="sel" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
@@ -180,16 +201,21 @@ export default {
     return {
       ticker: "", // one ticker
       tickers: [], // all tickers
+      errors: {
+        notFound: "Такая криптовалюта не найдена",
+        alreadyAdded: "Такой тикер уже добавлен",
+        empty: "Напишите имя криптовалюты",
+      }, // all errors
+      currentError: "", // текущая ошибка которая есть
       filter: "", // filter
       quickCrypts: ["BTC", "DOGE", "BCH", "TON"], // show quick crypts
       allCrypts: [], // crypts
-      showAlreadyAddedError: false, // if already have coin
-      showEmptyError: false, // if empty
-      showNotFound: false, // not doge coin
+      showError: false, // вывести ошибку?
       downloaded: false, // загружены ключевые слова
       sel: null, // show graph
       graph: [],
       page: 1,
+      hasNextPage: false,
     };
   },
 
@@ -206,7 +232,7 @@ export default {
     const tickersData = localStorage.getItem("cryptonomicon-list");
 
     if (tickersData) {
-      this.tickers = tickersData;
+      this.tickers = JSON.parse(tickersData);
       this.tickers.forEach((ticker) => {
         this.subscribeToUpdates(ticker.name);
       });
@@ -216,7 +242,7 @@ export default {
 
   methods: {
     prediction(ticker) {
-      this.removeAllErrors();
+      this.removeError();
       const filteredCrypts = this.allCrypts.filter((word) =>
         word.toLowerCase().includes(ticker.toLowerCase())
       );
@@ -231,16 +257,19 @@ export default {
     filteredTickers() {
       const start = (this.page - 1) * 6;
       const end = this.page * 6;
-
-      const filteredTickers = this.tickers.filter((ticker) => {
-        ticker.name.includes(this.filter);
-      });
-
+      if (this.filter === "") {
+        this.hasNextPage = this.tickers.length > end;
+        return this.tickers.slice(start, end);
+      }
+      const filteredTickers = this.tickers.filter((ticker) =>
+        ticker.name.toLowerCase().includes(this.filter.toLowerCase())
+      );
       this.hasNextPage = filteredTickers.length > end;
       return filteredTickers.slice(start, end);
     },
 
     subscribeToUpdates(tickerName) {
+      // подписаться на обновления
       setInterval(async () => {
         const f = await fetch(
           `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=94f904f97f51d9d7bb2ac8f15b206f78fb86903a3717b21ee970007b52241cd1`
@@ -262,50 +291,69 @@ export default {
       this.ticker = "";
     },
 
-    removeAllErrors() {
-      this.showAlreadyAddedError = false;
-      this.showEmptyError = false;
-      this.showNotFound = false;
+    setError(error) {
+      // вывести ошибку по ключю
+      this.currentError = this.errors[error];
+      this.showError = true;
+    },
+
+    removeError() {
+      // спрятать ошибку
+      this.showError = false;
     },
 
     addCrypt(ticker) {
+      // Функция для добавления ticker используется для быстрого выбора
       for (let i = 0; i < this.tickers.length; i++) {
         if (ticker === this.tickers[i].name) {
+          this.setError("alreadyAdded");
           this.showAlreadyAddedError = true;
           return;
         }
       }
       const currentTicker = { name: ticker, price: "-" };
       this.tickers.push(currentTicker);
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
       this.filter = "";
       this.subscribeToUpdates(ticker);
     },
 
     add() {
-      this.removeAllErrors();
+      /*Функция для добавления ticker используется внутри input*/
+      this.removeError();
 
       if (this.ticker.length === 0) {
         this.showEmptyError = true;
+        this.setError("empty");
         return;
       }
       for (let i = 0; i < this.tickers.length; i++) {
         if (this.ticker === this.tickers[i].name) {
-          this.showAlreadyAddedError = true;
+          this.setError("alreadyAdded");
           return;
         }
       }
       const currentTicker = { name: this.ticker, price: "-" };
       this.tickers.push(currentTicker);
+
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
+
       this.filter = "";
       this.subscribeToUpdates(currentTicker.name);
     },
 
     handleDelete(ticker) {
+      // удалить ticker
       this.tickers = this.tickers.filter((t) => t !== ticker);
       this.sel = null;
+
+      localStorage.removeItem("cryptonomicon-list");
+      const tmp = this.tickers.filter((t) => t !== ticker);
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(tmp));
     },
 
     normalizeGraph() {
+      // нормализация графика
       const maxvalue = Math.max(...this.graph);
       const minvalue = Math.min(...this.graph);
       return this.graph.map(
@@ -314,11 +362,13 @@ export default {
     },
 
     select(ticker) {
+      // выбрать текущий
       this.sel = ticker;
       this.graph = [];
     },
 
     async downloadAllCrypts() {
+      // Скачать все имена криптовалют
       const f = await fetch(
         "https://min-api.cryptocompare.com/data/all/coinlist?summary=true"
       );
