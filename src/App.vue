@@ -115,7 +115,7 @@
                 {{ t.name }} - USD
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ t.price }}
+                {{ formatPrice(t.price) }} $
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -207,6 +207,8 @@
 // [x] График сломан если везде одинаковые значения
 // [x] При удалении тикера остается выбор
 
+import { subscribeToTicker, unsubscribeFromTicker } from "@/api";
+
 export default {
   name: "App",
   computed: {
@@ -259,18 +261,15 @@ export default {
         this[key] = windowData[key];
       }
     });
-    // if (windowData.filter) {
-    //   this.filter = windowData.filter;
-    // }
-    // if (windowData.page) {
-    //   this.page = windowData.page;
-    // }
+
     const tickersData = localStorage.getItem("cryptonomicon-list");
 
     if (tickersData) {
       this.tickers = JSON.parse(tickersData);
       this.tickers.forEach((ticker) => {
-        this.subscribeToUpdates(ticker.name);
+        subscribeToTicker(ticker.name, (newPrice) =>
+          this.updateTicker(ticker.name, newPrice)
+        );
       });
     }
     this.downloadAllCrypts();
@@ -304,6 +303,21 @@ export default {
   },
 
   methods: {
+    updateTicker(tickerName, price) {
+      this.tickers
+        .filter((t) => t.name === tickerName)
+        .forEach((ticker) => {
+          ticker.price = price;
+        });
+    },
+
+    formatPrice(price) {
+      if (price === "-") {
+        return price;
+      }
+      return price > 1 ? price.toFixed(2) : price.toPrecision(2);
+    },
+
     prediction(ticker) {
       this.removeError();
       const filteredCrypts = this.allCrypts.filter((word) =>
@@ -315,29 +329,6 @@ export default {
         }
         this.quickCrypts = filteredCrypts.slice(0, 4);
       }
-    },
-
-    subscribeToUpdates(tickerName) {
-      // подписаться на обновления
-      setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=94f904f97f51d9d7bb2ac8f15b206f78fb86903a3717b21ee970007b52241cd1`
-        );
-        const data = await f.json();
-        const foundTicker = this.tickers.find(
-          (ticker) => ticker.name === tickerName
-        );
-        if (!foundTicker) {
-          return;
-        }
-        this.tickers.find((t) => t.name === tickerName).price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-
-        if (this.selectedTicker?.name === tickerName) {
-          this.graph.push(data.USD);
-        }
-      }, 5000);
-      this.ticker = "";
     },
 
     setError(error) {
@@ -352,6 +343,7 @@ export default {
     },
 
     addCrypt(ticker) {
+      this.removeError();
       // Функция для добавления ticker используется для быстрого выбора
       for (let i = 0; i < this.tickers.length; i++) {
         if (ticker === this.tickers[i].name) {
@@ -364,7 +356,9 @@ export default {
       this.tickers.push(currentTicker);
       localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
       this.filter = "";
-      this.subscribeToUpdates(ticker);
+      subscribeToTicker(ticker, (newPrice) =>
+        this.updateTicker(ticker, newPrice)
+      );
     },
 
     add() {
@@ -388,7 +382,9 @@ export default {
       localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
 
       this.filter = "";
-      this.subscribeToUpdates(currentTicker.name);
+      subscribeToTicker(currentTicker.name, (newPrice) =>
+        this.updateTicker(currentTicker.name, newPrice)
+      );
     },
 
     handleDelete(tickerToRemove) {
@@ -397,6 +393,7 @@ export default {
       if (this.selectedTicker === tickerToRemove) {
         this.selectedTicker = null;
       }
+      unsubscribeFromTicker(tickerToRemove.name);
     },
 
     select(ticker) {
