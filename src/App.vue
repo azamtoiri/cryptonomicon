@@ -107,6 +107,7 @@
             @click="select(t)"
             :class="{
               'border-4': selectedTicker === t,
+              'bg-red-200': formatPrice(t.price) === 'N/A',
             }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
@@ -316,7 +317,7 @@ export default {
 
     formatPrice(price) {
       if (price === "-") {
-        return price;
+        return "N/A";
       }
       return price > 1 ? price.toFixed(2) : price.toPrecision(2);
     },

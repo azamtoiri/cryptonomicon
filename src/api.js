@@ -31,9 +31,11 @@ socket.addEventListener("message", (e) => {
 
   // console.log(messageData);
 
-  if (type === "429") {
-    alert("Максимум один клиент");
-  }
+  // if (type === "500") {
+  //   const pars = messageData.PARAMETER.split("~");
+  //   console.log(pars[2]);
+  // }
+
   if (type !== AGGREGATE_INDEX || newPrice === undefined) {
     return;
   }
@@ -78,6 +80,7 @@ function unsubscribeFromTickerOnWs(ticker) {
     subs: [`5~CCCAGG~${ticker}~USD`],
   });
 }
+
 export const unsubscribeFromTicker = (ticker) => {
   tickersHandlers.delete(ticker);
   unsubscribeFromTickerOnWs(ticker);
