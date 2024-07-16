@@ -3,15 +3,37 @@ const API_KEY =
 const socket = new WebSocket(
   `wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`
 );
+const bc = new BroadcastChannel("cryptonomicon");
+
 const AGGREGATE_INDEX = "5";
+
 const tickersHandlers = new Map();
 
-socket.addEventListener("message", (e) => {
+bc.addEventListener("message", (e) => {
   const {
     TYPE: type,
     FROMSYMBOL: currency,
     PRICE: newPrice,
   } = JSON.parse(e.data);
+
+  if (type !== AGGREGATE_INDEX || newPrice === undefined) {
+    return;
+  }
+
+  const handlers = tickersHandlers.get(currency) ?? [];
+  handlers.forEach((fn) => fn(newPrice));
+});
+
+socket.addEventListener("message", (e) => {
+  const messageData = JSON.parse(e.data);
+  bc.postMessage(e.data); // Отправляем сообщение в BroadcastChannel
+  const { TYPE: type, FROMSYMBOL: currency, PRICE: newPrice } = messageData;
+
+  // console.log(messageData);
+
+  if (type === "429") {
+    alert("Максимум один клиент");
+  }
   if (type !== AGGREGATE_INDEX || newPrice === undefined) {
     return;
   }
