@@ -107,7 +107,7 @@
             @click="select(t)"
             :class="{
               'border-4': selectedTicker === t,
-              'bg-red-200': formatPrice(t.price) === 'N/A',
+              'bg-red-300': formatPrice(t.price) === 'N/A',
             }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
@@ -156,7 +156,10 @@
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{ selectedTicker.name }} - USD
         </h3>
-        <div class="flex items-end border-gray-600 border-b border-l h-64">
+        <div
+          class="flex items-end border-gray-600 border-b border-l h-64"
+          ref="graph"
+        >
           <div
             v-for="(bar, idx) in normalizedGraph"
             :key="idx"
@@ -212,6 +215,7 @@ import { subscribeToTicker, unsubscribeFromTicker } from "@/api";
 
 export default {
   name: "App",
+
   computed: {
     startIndex() {
       return (this.page - 1) * 6;
@@ -252,6 +256,7 @@ export default {
       };
     },
   },
+
   created() {
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
@@ -276,6 +281,14 @@ export default {
     this.downloadAllCrypts();
   },
 
+  mounted() {
+    window.addEventListener("resize", this.calculateMaxGraphElements);
+  },
+
+  beforeUnmount() {
+    window.removeEventListener("resize", this.calculateMaxGraphElements);
+  },
+
   data() {
     return {
       ticker: "", // one ticker
@@ -285,6 +298,7 @@ export default {
       selectedTicker: null, // show graph
 
       graph: [],
+      maxGraphElements: 1,
 
       page: 1,
 
@@ -304,14 +318,24 @@ export default {
   },
 
   methods: {
+    calculateMaxGraphElements() {
+      if (!this.$refs.graph) {
+        return;
+      }
+      this.maxGraphElements = this.$refs.graph.clientWidth / 38;
+    },
+
     updateTicker(tickerName, price) {
       this.tickers
         .filter((t) => t.name === tickerName)
-        .forEach((ticker) => {
-          if (ticker === this.selectedTicker) {
+        .forEach((t) => {
+          if (t === this.selectedTicker) {
             this.graph.push(price);
+            if (this.graph.length > this.maxGraphElements) {
+              this.graph = this.graph.slice(0, this.maxGraphElements);
+            }
           }
-          ticker.price = price;
+          t.price = price;
         });
     },
 
@@ -403,6 +427,9 @@ export default {
     select(ticker) {
       // выбрать текущий
       this.selectedTicker = ticker;
+      this.$nextTick(() => {
+        this.calculateMaxGraphElements();
+      });
     },
 
     async downloadAllCrypts() {
